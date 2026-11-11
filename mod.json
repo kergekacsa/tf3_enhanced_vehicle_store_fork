@@ -1,0 +1,14 @@
+{
+    "modId": "ethan_vehicle_helper_next",
+    "revision": 4,
+    "severityAdd": "None",
+    "severityRemove": "None",
+    "visible": true,
+    "cosmetic": false,
+    "dependencies": null,
+    "incompatibilities": null,
+    "params": null,
+    "preRunScript": { "fileName": "" },
+    "runScript": { "fileName": "" },
+    "postRunScript": { "fileName": "" }
+}
