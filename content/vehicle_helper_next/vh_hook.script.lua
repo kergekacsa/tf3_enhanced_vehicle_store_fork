@@ -11,8 +11,8 @@
 -- So: no closure tricks, no raw access, and every wrapper passes its arguments on unchanged
 -- with `...` (React counts them).
 
-local CORE_PATH = "ethan_vehicle_helper_next::/vehicle_helper_next/vh_core.lua"
-local BUYER_PATH = "ethan_vehicle_helper_next::/vehicle_helper_next/vh_buyer.lua"
+local CORE_PATH = "kacsa_enhanced_vehicle_store::/vehicle_helper_next/vh_core.lua"
+local BUYER_PATH = "kacsa_enhanced_vehicle_store::/vehicle_helper_next/vh_buyer.lua"
 
 ---------------------------------------------------------------------------------------------------
 -- per-vehicle numbers, cached per VehicleData table and settings version (bounded, no weak tables)

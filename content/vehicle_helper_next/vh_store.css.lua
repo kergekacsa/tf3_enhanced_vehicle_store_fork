@@ -100,6 +100,58 @@ function data()
 	a("R::VhBuyer R::Component!vh-card > BoxLayout!vh-settings-row-box", {
 		innerSpacing = { 8, 0 },
 	})
+	-- a buyer window (class vh-tall) gets the size of the game's tallest store window, the one
+	-- for Modify, at each font size (vehicle_store.css.lua: width 1715, Modify heights). The
+	-- selectors repeat the game's own, with vh-tall added, so they win over them
+	local STORE_WIDTH = 1715
+	local TALL_HEIGHT = { ["font-small"] = 945, ["font-medium"] = 956, ["font-large"] = 960 }
+	for font, height in pairs(TALL_HEIGHT) do
+		for _, variant in ipairs({ "", "!without-cart", "!modify" }) do
+			a("!" .. font .. " Window#vehiclestore.window" .. variant .. "!vh-tall", {
+				size = { STORE_WIDTH, height },
+			})
+		end
+	end
+
+	a("R::VhBuyer BoxLayout!vh-filter-top", {
+		gravity = { -1, 0 },
+		innerSpacing = { 6, 0 },
+	})
+	-- the Ranges panel: rows of lines, a line is a name and a value above two sliders
+	a("R::VhBuyer R::Component!vh-card > BoxLayout!vh-ranges-box", {
+		innerSpacing = { 0, 6 },
+	})
+	a("R::VhBuyer BoxLayout!vh-range-row", {
+		gravity = { 0, 0 },
+		innerSpacing = { 20, 0 },
+	})
+	a("R::VhBuyer BoxLayout!vh-range-line", {
+		gravity = { 0, 0 },
+		innerSpacing = { 0, 2 },
+	})
+	a("R::VhBuyer BoxLayout!vh-range-head", {
+		gravity = { 0, 0.5 },
+		innerSpacing = { 8, 0 },
+	})
+	a("R::VhBuyer BoxLayout!vh-range-sliders", {
+		gravity = { 0, 0.5 },
+		innerSpacing = { 8, 0 },
+	})
+	a("R::VhBuyer TextView!vh-range-name", {
+		gravity = { 0, 0.5 },
+		color = colors.NeutralLight,
+	})
+	a("R::VhBuyer TextView!vh-range-value", {
+		gravity = { 0, 0.5 },
+		color = colors.NeutralLight,
+	})
+	a("R::VhBuyer TextView!vh-range-value!vh-range-set", {
+		color = colors.NeutralLightest,
+	})
+	a("R::VhBuyer Slider!vh-range-slider", {
+		size = { 150, -1 },
+		gravity = { 0, 0.5 },
+	})
 	-- spacers like the game's (gravity only): a fixed size pins them, and then a stretched box
 	-- hands its spare room to all the other children instead (things spread out)
 	a("R::VhBuyer R::Component!vh-spacer", {
@@ -172,6 +224,13 @@ function data()
 	a("R::VhBuyer ToggleButton!vh-chip", {
 		padding = { 3, 8, 3, 8 },
 		gravity = { 0, 0.5 },
+	})
+	-- a chip whose filter is in use, in the game's color of a checked toggle (builtin.css.lua)
+	a("R::VhBuyer ToggleButton!vh-chip!vh-chip-active", {
+		backgroundColor1 = colors.AccentMedium,
+	})
+	a("R::VhBuyer ToggleButton!vh-chip!vh-chip-active TextView", {
+		color = colors.NeutralLightest,
 	})
 	a("R::VhBuyer ToggleButton!vh-cargo-chip", {
 		padding = { 2, 2, 2, 2 },
@@ -741,6 +800,12 @@ function data()
 		color = colors.Ok,
 	})
 	a("R::VhBuyer TextView!vh-bad", {
+		color = colors.Negative,
+	})
+	a("R::VhBuyer TextView!vh-cell-text!vh-good", {
+		color = colors.Ok,
+	})
+	a("R::VhBuyer TextView!vh-cell-text!vh-bad", {
 		color = colors.Negative,
 	})
 	a("R::VhBuyer TextView!vh-warn", {

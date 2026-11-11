@@ -9,8 +9,8 @@
 local M = {}
 
 M.TAG = "[EnhancedStore] "
-M.VERSION = "1.3"
-M.MOD_ID = "ethan_vehicle_helper_next"
+M.VERSION = "1.3-kacsa1"
+M.MOD_ID = "kacsa_enhanced_vehicle_store"
 
 local G = 3.27
 local LIMIT = 0.95
@@ -44,7 +44,7 @@ M.DEFAULTS = {
 -- settings without a switch in the buyer (always the default when the game starts)
 M.NO_SWITCH = { "buyer" }
 
-local SETTINGS_KEY = "ethan_vehicle_helper"
+local SETTINGS_KEY = "kacsa_enhanced_vehicle_store"
 local current = nil
 M.settingsVersion = 0
 
@@ -255,6 +255,104 @@ function M.pullOn(d, slope)
 end
 
 ---------------------------------------------------------------------------------------------------
+-- grades and the cargo filter (no game calls)
+---------------------------------------------------------------------------------------------------
+-- the letters from worst to best; a score below GRADE_LIMITS[i] gets GRADES[i]. The limits are
+-- the game's own five rating steps (vehicle_store_util.goodnessToTextString: Very Poor, Poor,
+-- Mediocre, Good, Very Good)
+M.GRADES = { "E", "D", "C", "B", "A" }
+local GRADE_LIMITS = { 0.2, 0.4, 0.6, 0.8 }
+
+-- the place of a score from 0 (worst) to 1 (best) in GRADES
+function M.gradeIndex(score)
+	for i, limit in ipairs(GRADE_LIMITS) do
+		if score < limit then return i end
+	end
+	return #M.GRADES
+end
+
+-- the letter of a score from 0 (worst) to 1 (best)
+function M.grade(score) return M.GRADES[M.gradeIndex(score)] end
+
+-- true when a vehicle matches every picked chip of the cargo filter.
+-- capacities: cargo type id -> amount (VehicleData.allCargoTypes); picked: set of chip keys.
+-- A key is a cargo type id, or a key of `groups`: chip key -> whether this vehicle matches
+-- that chip (the chips that stand for more than one cargo type)
+function M.carriesAll(capacities, picked, groups)
+	for id, _ in pairs(picked) do
+		local inGroup = groups and groups[id]
+		if inGroup ~= nil then
+			if not inGroup then return false end
+		elseif ((capacities and capacities[id]) or 0) <= 0 then
+			return false
+		end
+	end
+	return true
+end
+
+---------------------------------------------------------------------------------------------------
+-- range filters (no game calls)
+---------------------------------------------------------------------------------------------------
+-- A limit is { from = number or nil, to = number or nil }; nil means no limit on that side.
+-- The steps of a column are the values its sliders stop at, lowest first: one step per text
+-- that the listed values are shown as, { label = text, lo = lowest value, hi = highest value
+-- with that text }.
+
+-- true when a value is inside a limit (its ends count as inside)
+function M.inLimit(value, limit)
+	return (limit.from == nil or value >= limit.from) and (limit.to == nil or value <= limit.to)
+end
+
+-- the steps of a list of values; format(value) gives the text of a value and never gives a
+-- lower value a text that a higher value had before it
+function M.steps(values, format)
+	local sorted = {}
+	for i, v in ipairs(values) do sorted[i] = v end
+	table.sort(sorted)
+	local steps = {}
+	for _, v in ipairs(sorted) do
+		local label = format(v)
+		local last = steps[#steps]
+		if last and last.label == label then
+			last.hi = v
+		else
+			steps[#steps + 1] = { label = label, lo = v, hi = v }
+		end
+	end
+	return steps
+end
+
+-- where the From slider stands for a lower limit: the first step that reaches it (the first
+-- step when there is no limit, the last when no step reaches it)
+function M.fromIndex(steps, from)
+	if from == nil then return 1 end
+	for i, step in ipairs(steps) do
+		if step.hi >= from then return i end
+	end
+	return #steps
+end
+
+-- where the To slider stands for an upper limit: the last step that stays under it (the last
+-- step when there is no limit, the first when no step stays under it)
+function M.toIndex(steps, to)
+	if to == nil then return #steps end
+	for i = #steps, 1, -1 do
+		if steps[i].lo <= to then return i end
+	end
+	return 1
+end
+
+-- the limit of two slider places, From never above To; a slider at its end sets no limit on
+-- that side, and the result is nil when neither side has one
+function M.limitOf(steps, fromIndex, toIndex)
+	if fromIndex > toIndex then return nil end
+	local from = fromIndex > 1 and steps[fromIndex].lo or nil
+	local to = toIndex < #steps and steps[toIndex].hi or nil
+	if from == nil and to == nil then return nil end
+	return { from = from, to = to }
+end
+
+---------------------------------------------------------------------------------------------------
 -- formatting
 ---------------------------------------------------------------------------------------------------
 local function round(x) return math.floor(x + 0.5) end
@@ -289,6 +387,13 @@ function M.seconds(s)
 end
 
 function M.accel(a) return string.format("%.2f m/s\194\178", a) end
+
+-- a share from 0 to 1 as a number from 0 to 100, with one decimal only when it has one
+function M.percent(x)
+	local tenths = round(x * 1000)
+	if tenths % 10 == 0 then return string.format("%d", math.floor(tenths / 10)) end
+	return string.format("%.1f", tenths / 10)
+end
 
 local DOT = " \194\183 "
 M.DOT = DOT

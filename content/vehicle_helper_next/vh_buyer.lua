@@ -1,10 +1,11 @@
--- Enhanced Vehicle Store v1.3 (folder ethan_vehicle_helper_next): the buyer.
+-- Enhanced Vehicle Store v1.3 (folder kacsa_enhanced_vehicle_store): the buyer.
 --
 -- When a depot's Buy button opens the game's vehicle store, the store window shows this buyer
 -- instead of the game's content:
 --   top:     tabs (All / Locomotives / Wagons / Multiple units), search, count, Settings, Classic store
---   filters: engine types, Affordable, cargo types, Clear filters
+--   filters: engine types, Affordable, cargo types, Clear filters, Filters (opens the ranges)
 --   settings (folds open): slope (trains only), loaded weights, variations, pictures
+--   ranges (folds open): a From and a To slider for every column but the name (range filters)
 --   table:   one sortable row per vehicle; columns that mean nothing on a tab are hidden; the
 --            numbers this mod adds have small bars (fuller = better among the vehicles shown).
 --            Click anywhere on a row for its details; an arrow marks models with more variations:
@@ -47,8 +48,9 @@ local STORE_WINDOW_ID = "vehiclestore.window"
 -- remembered between store openings for this game session
 local ui = {
 	tab = {},            -- carrier -> tab index
-	filtersByDepot = {}, -- depot -> { cargo = {id = true}, engines = {type = true}, affordable }
+	filtersByDepot = {}, -- depot -> { cargo = {id = true}, engines = {type = true}, affordable, limits = {column key = limit} }
 	showSettings = false,
+	showRanges = false,
 	sortKey = "year",
 	sortAscending = true,
 	colors = {},         -- "m<id>" / "u<id>" -> color picked in the details (like the store's own map)
@@ -76,7 +78,7 @@ local function depotFilters(store)
 	local key = tostring(store.depot) .. "/" .. tostring(store.carrier)
 	local f = ui.filtersByDepot[key]
 	if f == nil then
-		f = { cargo = {}, engines = {}, affordable = false }
+		f = { cargo = {}, engines = {}, affordable = false, limits = {} }
 		ui.filtersByDepot[key] = f
 	end
 	return f
@@ -325,8 +327,10 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 	end
 	local passengerId = nil
 	pcall(function() passengerId = cargo_util and cargo_util.getPassengerCargoTypeId() end)
-	-- the cargo filter's "All cargo" (the game's mixed-cargo button): vehicles for any cargo
+	-- the cargo filter's "All cargo" (the game's mixed-cargo button): vehicles that carry every
+	-- freight type; and its "Any cargo": vehicles that carry at least one freight type
 	local ALL_CARGO = "all"
+	local ANY_CARGO = "any"
 	-- vehicles for any cargo (the game's cargo class UNIVERSAL, as its store checks it)
 	local function hasCargoClass(d, cls)
 		if type(d.cargoClasses) ~= "table" then return false end
@@ -360,6 +364,13 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 			if id ~= passengerId and amount and amount > 0 then n = n + 1 end
 		end
 		return n >= all
+	end
+	-- a vehicle that carries at least one freight type (passengers not counted)
+	local function carriesFreight(d)
+		for id, amount in pairs(d.allCargoTypes or {}) do
+			if id ~= passengerId and amount and amount > 0 then return true end
+		end
+		return false
 	end
 	function M._resetFreightCount() freightTypes = nil end -- for tests
 
@@ -497,6 +508,34 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		return { year = currentYear(), anyCargoFilterSet = false, passengerCargoTypeId = passengerId }
 	end
 
+	-- comfort, noise and pollution of a vehicle as scores from 0 (worst) to 1 (best), on the
+	-- store's own ranges for the carrier and year; a key is nil when the vehicle or the game has
+	-- no value for it (comfort: passenger vehicles only)
+	local function qualityScores(carrier, d, year)
+		local out = {}
+		pcall(function()
+			if type(vsu.getRangesFromData) ~= "function" then return end
+			local r = vsu.getRangesFromData(d, carrier, year)
+			local function scale(v, range, invert)
+				if v == nil or range == nil or range[1] == nil or range[2] == nil or range[2] == range[1] then return nil end
+				local x = math.max(0, math.min(1, (v - range[1]) / (range[2] - range[1])))
+				if invert then x = 1 - x end
+				return x
+			end
+			if d.passengers and (d.comfortFactor or 0) > 0 then out.comfort = scale(d.comfortFactor, r.comfortScoreRange, false) end
+			out.noise = scale(d.noise, r.noiseScoreRange, true)
+			out.pollution = scale(d.pollution, r.pollutionScoreRange, true)
+		end)
+		return out
+	end
+	-- the color of a score: good / poor
+	local function qualityClass(x) return x >= 0.6 and "vh-good" or (x < 0.4 and "vh-bad" or nil) end
+	-- a score as the store's word ("Good"), nil when the game has no such function
+	local function qualityWord(x)
+		if type(vsu.goodnessToTextString) ~= "function" then return nil end
+		return vsu.goodnessToTextString(x)
+	end
+
 	-- the vehicles to show, plus which cargo and engine types they have (for the filter chips)
 	local function availableElements(store, filter, opts, s)
 		local filterParams = filterParamsNow()
@@ -531,16 +570,11 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 					end
 					local universal = forAnyCargo(d)
 					if universal then presentCargo[ALL_CARGO] = true end
+					local freight = carriesFreight(d)
+					if freight then presentCargo[ANY_CARGO] = true end
 					for t, on in pairs(es.engineTypes or {}) do if on then presentEngines[t] = true end end
 					local keep = true
-					if anyCargo then
-						keep = false
-						for id, _ in pairs(opts.cargo) do
-							if id == ALL_CARGO then
-								if universal then keep = true; break end
-							elseif d.allCargoTypes and (d.allCargoTypes[id] or 0) > 0 then keep = true; break end
-						end
-					end
+					if anyCargo then keep = core.carriesAll(d.allCargoTypes, opts.cargo, { [ALL_CARGO] = universal, [ANY_CARGO] = freight }) end
 					if keep and anyEngine then
 						keep = false
 						for t, _ in pairs(opts.engines) do
@@ -583,6 +617,7 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 			e.dynamic.livery = livery
 			-- with every variation in its own row there is nothing more to pick: no arrow, no picker
 			e.dynamic.options = (s.groupLiveries and e.dynamic.group) and groupCount[e.dynamic.group] or 1
+			e.dynamic.quality = qualityScores(store.carrier, e.static.vehicleData, filterParams.year)
 		end
 		table.sort(list, function(a, b)
 			local ya, yb = a.static.vehicleData.yearFrom or 0, b.static.vehicleData.yearFrom or 0
@@ -1076,11 +1111,14 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 			if elem == nil then return nil end
 			local v = metricsFor(elem.static.vehicleData)[key]
 			if v == nil then return rowCell(params, up, { text(DASH, METRIC_TEXT .. ", vh-cell-empty") }) end
+			-- the bar runs from zero: the share of the highest value shown, or (lower is better)
+			-- the lowest value shown as a share of this one
 			local r = rangeOf(up, key)
 			local x = 1
-			if r.min and r.max and r.max > r.min then
-				x = (v - r.min) / (r.max - r.min)
-				if lowerIsBetter then x = 1 - x end
+			if lowerIsBetter then
+				if r.min and v > 0 then x = r.min / v end
+			elseif r.max and r.max > 0 then
+				x = v / r.max
 			end
 			local shown, full = format(v)
 			-- the bar spans its column, less a gap (a fixed 64 px bar was as wide as the narrower
@@ -1089,6 +1127,29 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 				text(shown, METRIC_TEXT),
 				builtin.ProgressBar{ meta = { class = "vh-metric-bar" }, value = math.max(0.04, math.min(1, x)) },
 			}, nil, "vh-metric-inner", nil, (full ~= nil and full ~= shown) and full or nil)
+		end))
+	end
+
+	-- one of an element's quality scores (see qualityScores), or nil
+	local function qualityOf(e, key)
+		local q = e.dynamic and e.dynamic.quality
+		return q and q[key]
+	end
+
+	-- a quality score as a letter, A (best) to E, in the color of the details. The tooltip has
+	-- the numbers behind it: the vehicle's own value (field of VehicleData, 0 to 1, shown as 0 to
+	-- 100) and the score, with the store's word
+	local function gradeCell(key, label, field)
+		return react.RegisterRecipe("VhBuyerCell_" .. key, guarded(key, function(params)
+			local elem, up = cellElem(params)
+			if elem == nil then return nil end
+			local x = qualityOf(elem, key)
+			if x == nil then return rowCell(params, up, { text(DASH, CELL_TEXT .. ", vh-cell-empty") }) end
+			local class = qualityClass(x)
+			local word = qualityWord(x)
+			local tip = string.format("%s value %s%srating %s%%", label, core.percent(elem.static.vehicleData[field] or 0), DOT, core.percent(x))
+				.. (word and (" (" .. word .. ")") or "")
+			return rowCell(params, up, { text(core.grade(x), CELL_TEXT .. (class and (", " .. class) or "")) }, nil, nil, nil, tip)
 		end))
 	end
 
@@ -1223,9 +1284,7 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		year = textCell("year", function(es) return tostring(es.vehicleData.yearFrom or "") end),
 		capacity = textCell("capacity", function(es) return (es.vehicleData.totalCapacity or 0) > 0 and core.int(es.vehicleData.totalCapacity) or nil end),
 		speed = textCell("speed", function(es) return speed(es.vehicleData.speed) end),
-		power = textCell("power", function(es) if (es.vehicleData.power or 0) > 0 then return shortUnit(power(es.vehicleData.power)) end end),
-		te = textCell("te", function(es) if (es.vehicleData.tractiveEffort or 0) > 0 then return shortUnit(force(es.vehicleData.tractiveEffort)) end end),
-		weight = textCell("weight", function(es) return weight(es.vehicleData.weight or 0) end),
+		length = textCell("length", function(es) if (es.vehicleData.length or 0) > 0 then return trainLength(es.vehicleData.length) end end),
 		price = textCell("price", function(es) return shortMoney(es.vehicleData.price or 0) end),
 		upkeep = textCell("upkeep", function(es) local short, full = shortMoney(es.vehicleData.runningCosts or 0); return short, full .. "/yr" end),
 		pricePerCargo = metricCell("pricePerCargo", function(v) return shortMoney(v) end, true),
@@ -1236,11 +1295,16 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		loading = metricCell("loadingSpeed", function(v) return string.format("%.1f\195\151", v) end, false),
 		thrust = textCell("thrust", function(es) if (es.vehicleData.thrust or 0) > 0 then return shortUnit(force(es.vehicleData.thrust)) end end),
 		powerPerWeight = metricCell("powerPerWeight", function(v) return powerPerTonne(v) end, false),
+		noise = gradeCell("noise", "Noise", "noise"),
+		pollution = gradeCell("pollution", "Pollution", "pollution"),
+		comfort = gradeCell("comfort", "Comfort", "comfortFactor"),
 	}
+
+	local GRADE_COLUMN_WEIGHT = 1.6
 
 	-- all columns. `hide`: tabs (and "single" = road/water/air) where a column means nothing;
 	-- `only`: the column is shown only there; `has`: the column is hidden when no vehicle in the
-	-- list has a value for it
+	-- list has a value for it; `icon`: the header shows this picture instead of the name
 	local COLUMNS = {
 		{ key = "name", name = "Vehicle", tooltip = "Model; livery, engine, cargo and other notes below. Click anywhere on a row for its details; an arrow means more variations (pick one in the details)", recipe = NameCell, weight = 9,
 			compare = function(e) return tostring(e.dynamic.model or e.static.name) end },
@@ -1252,18 +1316,12 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 			compare = function(e) return e.static.vehicleData.totalCapacity or 0 end },
 		{ key = "speed", name = "Speed", tooltip = "Top speed", recipe = cells.speed, weight = 3.3,
 			compare = function(e) return e.static.vehicleData.speed or 0 end },
-		{ key = "power", name = "Power", tooltip = "Power", recipe = cells.power, weight = 3.3, hide = { waggon = true },
-			has = function(es) return (es.vehicleData.power or 0) > 0 end,
-			compare = function(e) return e.static.vehicleData.power or 0 end },
-		{ key = "te", name = "TE", tooltip = "Tractive effort", recipe = cells.te, weight = 3.6, hide = { waggon = true },
-			has = function(es) return (es.vehicleData.tractiveEffort or 0) > 0 end,
-			compare = function(e) return e.static.vehicleData.tractiveEffort or 0 end },
 		{ key = "thrust", name = "Thrust", tooltip = "Thrust", recipe = cells.thrust, weight = 3.3, only = { single = true },
 			has = function(es) return (es.vehicleData.thrust or 0) > 0 end,
 			compare = function(e) return e.static.vehicleData.thrust or 0 end },
-		-- planes and helicopters have no cargo weight in their data: the weight isn't worth a column
-		{ key = "weight", name = "Weight", tooltip = "Empty weight", recipe = cells.weight, weight = 3.1, hide = { AIR = true },
-			compare = function(e) return e.static.vehicleData.weight or 0 end },
+		{ key = "length", name = "Length", tooltip = "Length", recipe = cells.length, weight = 3.1, hide = { AIR = true },
+			has = function(es) return (es.vehicleData.length or 0) > 0 end,
+			compare = function(e) return e.static.vehicleData.length or 0 end },
 		{ key = "price", name = "Price", tooltip = "Purchase price (short: k = thousand, M = million; hover a cell for the full price)", recipe = cells.price, weight = 3.2,
 			compare = function(e) return e.static.vehicleData.price or 0 end },
 		{ key = "upkeep", name = "Upkeep", tooltip = "Yearly running costs (short: k = thousand, M = million; hover a cell for the full amount)", recipe = cells.upkeep, weight = 3.2,
@@ -1283,7 +1341,7 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		{ key = "pull", name = "Pull", tooltip = "Heaviest load it can start and haul at half its top speed on the slope set in Settings (Enhanced Store)", recipe = cells.pull, weight = 2.8, hide = { waggon = true, single = true },
 			has = function(es, m) return m.pull ~= nil end,
 			compare = function(e, m) return m.pull or -1 end },
-		{ key = "selfTime", name = "0\226\128\147top", tooltip = "Seconds from a stop to its top speed, on the flat (Enhanced Store)", recipe = cells.selfTime, weight = 2.6, only = { single = true },
+		{ key = "selfTime", name = "0\226\128\147top", tooltip = "Seconds from a stop to its top speed, on the flat (Enhanced Store)", recipe = cells.selfTime, weight = 2.6, only = { single = true, multiple_unit = true },
 			has = function(es, m) return m.selfTime ~= nil end,
 			compare = function(e, m) return m.selfTime or 1e15 end },
 		-- ships: the game works out a ship's pushing force inside the engine (from its propeller),
@@ -1291,6 +1349,13 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		{ key = "powerPerWeight", name = "Power/t", tooltip = "Power per tonne, loaded (or empty, see Settings): more gets a ship up to speed quicker (Enhanced Store)", recipe = cells.powerPerWeight, weight = 3, only = { WATER = true },
 			has = function(es, m) return m.powerPerWeight ~= nil end,
 			compare = function(e, m) return m.powerPerWeight or -1 end },
+		{ key = "noise", name = "Noise", icon = ICON .. "symbol_noise.tga", tooltip = "Noise, A (quiet) to E (loud): the game's rating for this kind of vehicle and year", recipe = cells.noise, weight = GRADE_COLUMN_WEIGHT,
+			compare = function(e) return qualityOf(e, "noise") or -1 end },
+		{ key = "pollution", name = "Pollution", icon = ICON .. "symbol_pollution.tga", tooltip = "Pollution, A (clean) to E (dirty): the game's rating for this kind of vehicle and year", recipe = cells.pollution, weight = GRADE_COLUMN_WEIGHT,
+			compare = function(e) return qualityOf(e, "pollution") or -1 end },
+		{ key = "comfort", name = "Comfort", icon = ICON .. "symbol_person_comfort.tga", tooltip = "Comfort, A (best) to E (worst): the game's rating for this kind of vehicle and year", recipe = cells.comfort, weight = GRADE_COLUMN_WEIGHT,
+			has = function(es) return es.vehicleData.passengers and (es.vehicleData.comfortFactor or 0) > 0 end,
+			compare = function(e) return qualityOf(e, "comfort") or -1 end },
 		{ key = "add", name = " ", recipe = AddCell, weight = 3.8,
 			compare = function(e) return e.static.vehicleData.price or 0 end },
 	}
@@ -1312,6 +1377,113 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 			if not hidden then out[#out + 1] = c end
 		end
 		return out
+	end
+
+	-------------------------------------------------------------------------------------------
+	-- the range filters (see vh_core.lua for limits and steps)
+	-------------------------------------------------------------------------------------------
+	local RANGE_LINES_PER_ROW = 3
+	local GRADE_COLUMNS = { noise = true, pollution = true, comfort = true }
+	local function gradeText(index) return core.GRADES[index] end
+	-- column key -> the text of a value on the column's sliders. A column without an entry has
+	-- no range filter. A value is the column's compare value; for a grade column it is the place
+	-- of the letter in core.GRADES
+	local RANGE_TEXT = {
+		year = function(v) return string.format("%d", math.floor(v)) end,
+		capacity = function(v) return core.int(v) end,
+		speed = speed,
+		thrust = force,
+		length = trainLength,
+		price = money,
+		upkeep = function(v) return money(v) .. "/yr" end,
+		loading = function(v) return string.format("%.1f\195\151", v) end,
+		pricePerCargo = money,
+		upkeepPerCargo = function(v) return money(v) .. "/yr" end,
+		accel = core.accel,
+		pull = function(v) return core.int(v) .. " t" end,
+		selfTime = core.seconds,
+		powerPerWeight = powerPerTonne,
+		noise = gradeText,
+		pollution = gradeText,
+		comfort = gradeText,
+	}
+
+	-- the value of a row in a column for the range filters, nil when its cell shows a dash
+	local function rangeValue(c, e)
+		if GRADE_COLUMNS[c.key] then
+			local x = qualityOf(e, c.key)
+			return x and core.gradeIndex(x)
+		end
+		local m = metricsFor(e.static.vehicleData)
+		if c.has then
+			local ok, yes = pcall(c.has, e.static, m)
+			if not (ok and yes) then return nil end
+		end
+		local ok, v = pcall(c.compare, e, m)
+		return (ok and type(v) == "number") and v or nil
+	end
+
+	-- the rows inside the limits of the columns shown, and how many of those columns have a
+	-- limit. A row with no value in a column stays, whatever that column's limit
+	local function withinLimits(elements, cols, limits)
+		local limited = {}
+		for _, c in ipairs(cols) do
+			if RANGE_TEXT[c.key] and limits[c.key] then limited[#limited + 1] = c end
+		end
+		if #limited == 0 then return elements, 0 end
+		local out = {}
+		for _, e in ipairs(elements) do
+			local keep = true
+			for _, c in ipairs(limited) do
+				local v = rangeValue(c, e)
+				if v ~= nil and not core.inLimit(v, limits[c.key]) then keep = false; break end
+			end
+			if keep then out[#out + 1] = e end
+		end
+		return out, #limited
+	end
+
+	-- the steps of a column over these rows (see core.steps)
+	local function rangeSteps(c, elements)
+		local values = {}
+		for _, e in ipairs(elements) do values[#values + 1] = rangeValue(c, e) end
+		return core.steps(values, RANGE_TEXT[c.key])
+	end
+
+	-- one column in the Ranges panel: its name and the two ends of its limit above a From and a
+	-- To slider. onChange(limit) gets the new limit, nil for none
+	-- The line and its sliders are keyed by the column and its steps (meta.localKey): the game
+	-- keeps a control by its place among its siblings otherwise, and a slider that gets another
+	-- column's steps reports a move of its own.
+	local function rangeLine(c, steps, limit, onChange)
+		local from = core.fromIndex(steps, limit and limit.from)
+		local to = math.max(from, core.toIndex(steps, limit and limit.to))
+		local key = table.concat({ "vh-range", c.key, tostring(#steps), steps[1].label, steps[#steps].label }, "|")
+		local function slider(side, value, tooltip, onMove)
+			return builtin.Slider{
+				meta = { class = "vh-range-slider", tooltip = tooltip, localKey = key .. "|" .. side },
+				min = 1,
+				max = #steps,
+				step = 1,
+				pageStep = 1,
+				value = value,
+				onValueChange = function(i) if i ~= value then onMove(i) end end,
+			}
+		end
+		return builtin.BoxLayout{
+			meta = { class = "vh-range-line", localKey = key },
+			orientation = V,
+			children = {
+				box(H, {
+					text(c.name, "vh-range-name, font-scale-annotation"),
+					text(steps[from].label .. " " .. DASH .. " " .. steps[to].label, "vh-range-value, font-scale-annotation" .. (limit and ", vh-range-set" or "")),
+				}, "vh-range-head"),
+				box(H, {
+					slider("from", from, "Lowest " .. c.name, function(i) onChange(core.limitOf(steps, i, math.max(i, to))) end),
+					slider("to", to, "Highest " .. c.name, function(i) onChange(core.limitOf(steps, math.min(i, from), i)) end),
+				}, "vh-range-sliders"),
+			},
+		}
 	end
 
 	-- a column's sort value for a row, never the same for two rows: ties go by the rows' own order
@@ -1351,7 +1523,8 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		local nodes = {}
 		for _, c in ipairs(cols) do
 			nodes[#nodes + 1] = builtin.ColumnDesc{
-				name = c.name,
+				name = c.icon == nil and c.name or nil,
+				path = c.icon,
 				tooltip = c.tooltip,
 				recipe = c.recipe,
 				headerStyleClass = c.key ~= "name" and "centered" or nil,
@@ -1709,17 +1882,10 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 	local function goodness(store, d)
 		local out = {}
 		pcall(function()
-			if type(vsu.getRangesFromData) ~= "function" or type(vsu.goodnessToTextString) ~= "function" then return end
-			local r = vsu.getRangesFromData(d, store.carrier, currentYear())
-			local function scale(v, range, invert)
-				if v == nil or range == nil or range[1] == nil or range[2] == nil or range[2] == range[1] then return nil end
-				local x = math.max(0, math.min(1, (v - range[1]) / (range[2] - range[1])))
-				if invert then x = 1 - x end
-				return { vsu.goodnessToTextString(x), x >= 0.6 and "vh-good" or (x < 0.4 and "vh-bad" or nil) }
+			for key, x in pairs(qualityScores(store.carrier, d, currentYear())) do
+				local word = qualityWord(x)
+				if word then out[key] = { word, qualityClass(x) } end
 			end
-			if d.passengers and (d.comfortFactor or 0) > 0 then out.comfort = scale(d.comfortFactor, r.comfortScoreRange, false) end
-			out.noise = scale(d.noise, r.noiseScoreRange, true)
-			out.pollution = scale(d.pollution, r.pollutionScoreRange, true)
 		end)
 		return out
 	end
@@ -2226,6 +2392,8 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 			cargo = react.useState(depotFilters(store).cargo),
 			engines = react.useState(depotFilters(store).engines),
 			affordable = react.useState(depotFilters(store).affordable),
+			limits = react.useState(depotFilters(store).limits),
+			showRanges = react.useState(ui.showRanges),
 			selected = react.useState(nil),
 			variant = react.useState(nil),   -- a livery / version picked in the details
 			colors = react.useState(0),      -- bumped when a color is picked
@@ -2326,7 +2494,19 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		local filter = makeFilter(store, tabs, tabIndex)
 		local opts = { search = st.search:old(), cargo = st.cargo:old(), engines = st.engines:old(), affordable = st.affordable:old(),
 			applyCargo = tabId ~= "locomotive", applyEngines = tabId ~= "waggon" }
-		local elements, presentCargo, presentEngines, total = availableElements(store, filter, opts, s)
+		local candidates, presentCargo, presentEngines, total = availableElements(store, filter, opts, s)
+		local kind = nil
+		for _, name in ipairs({ "AIR", "WATER", "ROAD", "RAIL", "TRAM" }) do
+			if store.carrier ~= nil and store.carrier == carrierEnum(name) then kind = name end
+		end
+		-- the columns come from the rows before the range filters, so a limit hides no column
+		local cols = visibleColumns(tabId, single, candidates, kind)
+		local limits = st.limits:old()
+		local elements, limitCount = withinLimits(candidates, cols, limits)
+		local function setLimits(n)
+			depotFilters(store).limits = n
+			st.limits:set(n)
+		end
 		local byKey, rowKeys = {}, {}
 		for i, e in ipairs(elements) do
 			e.rank = i -- ties in a sort go by this order (year, then name)
@@ -2413,11 +2593,6 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		end
 
 		-- the table's columns and sort (before the top bar: with a controller the sort is there)
-		local kind = nil
-		for _, name in ipairs({ "AIR", "WATER", "ROAD", "RAIL", "TRAM" }) do
-			if store.carrier ~= nil and store.carrier == carrierEnum(name) then kind = name end
-		end
-		local cols = visibleColumns(tabId, single, elements, kind)
 		local colKeys = {}
 		for _, c in ipairs(cols) do colKeys[#colKeys + 1] = c.key end
 		local sortIndex, sortAscending = 2, true
@@ -2511,33 +2686,38 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		if not (settingsOn and crowded) then
 			-- filters: engines, affordable, clear on the first row; the cargo filter after them, or on a
 			-- row of its own when it has many types. The cargo filter looks like the game's: passengers
-			-- in a box, "All cargo" (the mixed-cargo icon) in a box, the cargo types in a box (two rows
-			-- when there are many). A vehicle shows when it carries any type picked; All cargo picks
-			-- the vehicles for any cargo, and like in the game, picking a type turns All cargo off and
-			-- All cargo turns the types off.
-			local cargoIds, showPax, showAll = {}, false, false
+			-- in a box, "Any cargo" and "All cargo" (the mixed-cargo icon) each in a box, the cargo
+			-- types in a box (two rows when there are many). A vehicle shows when it carries every type
+			-- picked. Any cargo picks the vehicles that carry some freight, All cargo those that carry
+			-- every freight type. Picking a type turns Any cargo and All cargo off, and picking one of
+			-- the two turns the other and the types off.
+			local GROUP_CHIPS = { [ALL_CARGO] = true, [ANY_CARGO] = true }
+			local cargoIds, showPax, showAll, showAny = {}, false, false, false
 			if showCargo then
 				local picked = st.cargo:old()
 				for id, _ in pairs(presentCargo) do
-					if id ~= ALL_CARGO and id ~= passengerId then cargoIds[#cargoIds + 1] = id end
+					if not GROUP_CHIPS[id] and id ~= passengerId then cargoIds[#cargoIds + 1] = id end
 				end
 				for id, _ in pairs(picked) do
-					if id ~= ALL_CARGO and id ~= passengerId and not presentCargo[id] then cargoIds[#cargoIds + 1] = id end
+					if not GROUP_CHIPS[id] and id ~= passengerId and not presentCargo[id] then cargoIds[#cargoIds + 1] = id end
 				end
 				table.sort(cargoIds, function(a, b) return tostring(cargoInfo(a).name) < tostring(cargoInfo(b).name) end)
 				showPax = passengerId ~= nil and (presentCargo[passengerId] or picked[passengerId]) and true or false
 				showAll = (presentCargo[ALL_CARGO] or picked[ALL_CARGO]) and true or false
+				showAny = (presentCargo[ANY_CARGO] or picked[ANY_CARGO]) and true or false
+				-- (Any cargo is not counted: alone it would filter nothing)
 				local count = #cargoIds + (showPax and 1 or 0) + (showAll and 1 or 0)
-				if count < 2 and next(picked) == nil then cargoIds, showPax, showAll = {}, false, false end
+				if count < 2 and next(picked) == nil then cargoIds, showPax, showAll, showAny = {}, false, false, false end
 			end
 			local function setCargo(id, on)
 				local n = {}
 				for k, v in pairs(st.cargo:old()) do n[k] = v end
-				if on and id == ALL_CARGO then
-					-- All cargo turns the types off (passengers stay)
+				if on and GROUP_CHIPS[id] then
+					-- Any cargo and All cargo turn each other and the types off (passengers stay)
 					for k, _ in pairs(n) do if k ~= passengerId then n[k] = nil end end
 				elseif on and id ~= passengerId then
 					n[ALL_CARGO] = nil
+					n[ANY_CARGO] = nil
 				end
 				n[id] = on and true or nil
 				depotFilters(store).cargo = n
@@ -2560,14 +2740,17 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 			local cargoOneLine = #cargoChips > 8 and crowded
 			local cargoTwoRows = #cargoChips > 8 and not crowded
 			local cargoBar = nil
-			if #cargoChips > 0 or showPax or showAll then
+			if #cargoChips > 0 or showPax or showAll or showAny then
 				local groups = {}
 				if showPax then
 					local info = cargoInfo(passengerId)
 					groups[#groups + 1] = cargoGroup({ cargoChip(passengerId, info.icon, info.name) }, "vh-cargo-single")
 				end
+				if showAny then
+					groups[#groups + 1] = cargoGroup({ cargoChip(ANY_CARGO, nil, "Any cargo", "Only vehicles that carry cargo, of any type") }, "vh-cargo-single")
+				end
 				if showAll then
-					groups[#groups + 1] = cargoGroup({ cargoChip(ALL_CARGO, mixedCargoIcon(), "All cargo", "Only vehicles for any cargo") }, "vh-cargo-single")
+					groups[#groups + 1] = cargoGroup({ cargoChip(ALL_CARGO, mixedCargoIcon(), "All cargo", "Only vehicles that carry every cargo type") }, "vh-cargo-single")
 				end
 				if #cargoChips > 0 then
 					-- two rows like the game's when there are many: the first gets the extra one
@@ -2609,10 +2792,12 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 				st.affordable:set(on)
 			end, "Only vehicles you can pay for now")
 			local anyFilter = next(st.cargo:old()) ~= nil or next(st.engines:old()) ~= nil or st.affordable:old() or st.search:old() ~= ""
+				or next(limits) ~= nil
 			row1[#row1 + 1] = button("Clear filters", nil, function()
 				local f = depotFilters(store)
 				f.cargo, f.engines, f.affordable = {}, {}, false
 				st.cargo:set({}); st.engines:set({}); st.affordable:set(false); st.search:set("")
+				setLimits({})
 			end, "vh-button, vh-small", anyFilter)
 
 			-- the rows are packed to the left (not stretched): a stretched box hands its spare width to
@@ -2647,6 +2832,15 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 				row1[#row1 + 1] = cargoBar
 				filterRows = { box(H, row1, "vh-filter-row") }
 			end
+			-- the Filters chip (it opens the Ranges panel) at the right end of the first row
+			filterRows[1] = box(H, {
+				filterRows[1],
+				spacer(),
+				toggle(builtin.TextView{ text = limitCount > 0 and ("Filters (" .. core.int(limitCount) .. ")") or "Filters" }, st.showRanges:old(), function(on)
+					ui.showRanges = on
+					st.showRanges:set(on)
+				end, "A lowest and a highest value for the columns of the table", limitCount > 0 and "vh-chip, vh-chip-active" or "vh-chip"),
+			}, "vh-filter-top")
 			children[#children + 1] = card(V, filterRows, "vh-filters")
 		end
 		-- the settings, under the filters (or in their place when crowded)
@@ -2667,6 +2861,41 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 					function() changeSetting("pictures", not s.pictures) end, "vh-button, vh-small"),
 			}, "vh-settings-row")
 		end
+		-- the range filters, under the settings: a line per column that has a range filter and
+		-- more than one step among the rows before the range filters
+		local function rangesPanel()
+			local rows = { box(H, {
+				text("Ranges", "vh-filter-label"),
+				button("Clear ranges", "Take every limit off, at this depot", function() setLimits({}) end, "vh-button, vh-small", next(limits) ~= nil),
+			}, "vh-filter-row") }
+			local row = {}
+			for _, c in ipairs(cols) do
+				local steps = RANGE_TEXT[c.key] and rangeSteps(c, candidates) or {}
+				if #steps > 1 then
+					row[#row + 1] = rangeLine(c, steps, limits[c.key], function(limit)
+						local n = {}
+						for k, v in pairs(st.limits:old()) do n[k] = v end
+						n[c.key] = limit
+						setLimits(n)
+					end)
+					if #row == RANGE_LINES_PER_ROW then
+						rows[#rows + 1] = box(H, row, "vh-range-row")
+						row = {}
+					end
+				end
+			end
+			if #row > 0 then rows[#rows + 1] = box(H, row, "vh-range-row") end
+			return card(V, rows, "vh-ranges")
+		end
+		if st.showRanges:old() and not (settingsOn and crowded) then
+			local okPanel, panel = pcall(rangesPanel)
+			if okPanel then
+				children[#children + 1] = panel
+			else
+				fail("the Ranges panel", panel)
+				ui.showRanges = false
+			end
+		end
 
 		-- the table
 		-- the rows go to the table in the order it shows them (by its sort column). The table
@@ -2681,6 +2910,7 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		local filterKey = {}
 		for id, _ in pairs(st.cargo:old()) do filterKey[#filterKey + 1] = "c" .. tostring(id) end
 		for t, _ in pairs(st.engines:old()) do filterKey[#filterKey + 1] = "e" .. tostring(t) end
+		for key, limit in pairs(limits) do filterKey[#filterKey + 1] = "r" .. key .. ":" .. tostring(limit.from) .. ":" .. tostring(limit.to) end
 		table.sort(filterKey)
 		local tableKey = table.concat({ "vh", tabId, tostring(st.isPad), tostring(s.slope), tostring(s.trainWeight), tostring(s.groupLiveries),
 			tostring(s.pictures), tostring(st.affordable:old()), table.concat(filterKey, "."), table.concat(colKeys, "."), st.search:old(),
@@ -2983,6 +3213,8 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		local c = choice[store]
 		if c == "buyer" then
 			p.content = VhBuyer{ store = store }
+			-- a buyer window is as tall as the game's tallest store window (see vh_store.css.lua)
+			if type(p.meta) == "table" and type(p.meta.class) == "string" then p.meta.class = p.meta.class .. ", vh-tall" end
 		elseif c == "game" and p.content ~= nil and core.settings().buyer and rv.supported(store) then
 			p.content = classicWithButton(store, p.content)
 		end
