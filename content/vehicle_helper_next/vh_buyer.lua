@@ -17,7 +17,8 @@
 --            a grid of totals, Buy / Fill / Clear
 -- Replace and Modify (the vehicle manager's buttons) open it too (1.2): Replace builds the
 -- vehicle the old ones become, Modify starts with the train's own cars (Modify of several
--- vehicles at once keeps the game's store). "Classic store" switches the window to the game's
+-- vehicles at once too, when they have the same cars: the one train stands for each of them;
+-- with different cars it keeps the game's store). "Classic store" switches the window to the game's
 -- store, and an "Enhanced Store" button in a slim bar above that store switches it back.
 --
 -- How it plugs in (no debug library needed):
@@ -663,8 +664,9 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 	end
 
 	-- a train is a list of items: { es = element static, reversed = turned around, color = Vec3f }
-	-- own: a car the vehicle being modified already has (Modify): its parts as the game gave them
-	-- (they keep their age and value; the game's cart keeps them too), see modifyPlan
+	-- own: a car the vehicles being modified already have (Modify): for each vehicle, its parts
+	-- as the game gave them (they keep their age and value; the game's cart keeps them too), see
+	-- rv.modifyPlan
 	local function trainItem(es, reversed, color, own)
 		return { es = es, reversed = reversed and true or false, color = usableColor(color), own = own }
 	end
@@ -679,8 +681,9 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 	--   TRANSPORT_VEHICLE config, so kept cars keep their age); the change has the vehicle's
 	--   entity; the price is new cars at their price plus kept cars at what they are worth
 	--   (getPartPrice), less what the vehicle is worth now.
-	-- The buyer does Modify for one train; several at once go to the game's store (each keeps
-	-- its own cars there, the buyer has one train).
+	-- The buyer has one train. It does Modify for one vehicle, and for several with the same
+	-- cars in the same order (each keeps its own parts, see rv.modifyPlan); several with
+	-- different cars go to the game's store.
 	-------------------------------------------------------------------------------------------
 	local rv = {}
 	function rv.mode(store)
@@ -688,12 +691,15 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		if m == "Replace" or m == "Modify" then return m end
 		return "Buy"
 	end
+	function rv.exists(entity)
+		local ok, yes = pcall(function() return api.engine.entityExists(entity) end)
+		return ok and yes and true or false
+	end
 	-- the vehicles the window is for that still exist
 	function rv.entities(store)
 		local out = {}
 		for _, e in ipairs((store and store.vehicleEntities) or {}) do
-			local ok, yes = pcall(function() return api.engine.entityExists(e) end)
-			if ok and yes then out[#out + 1] = e end
+			if rv.exists(e) then out[#out + 1] = e end
 		end
 		return out
 	end
@@ -746,18 +752,12 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		if matches(false) then return false end
 		return matches(true)
 	end
-	-- the train to start Modify with: the vehicle's cars as train items (each keeps its parts),
-	-- or nil and why (then the game's store opens)
-	function rv.modifyPlan(store)
-		local list = store.vehicleEntities
-		if type(list) ~= "table" or #list ~= 1 then return nil, "more than one vehicle" end
-		if not vsu.acceptsMultiVehicle(store.carrier) then return nil, "not a train or tram" end
-		local entity = list[1]
+	-- the cars of one vehicle, first to last: { es, color, own = { parts, rev, reversed, mu } }
+	-- (own: the car's parts as the game gave them, and which way round they are), or nil and why
+	function rv.carsOf(entity, data, index)
 		local tv = api.engine.getComponent(entity, api.type.ComponentType.TRANSPORT_VEHICLE)
 		local cfg = tv and tv.transportVehicleConfig
 		if cfg == nil then return nil, "no vehicle config" end
-		local data = store.vehiclesStaticData and store.vehiclesStaticData.repId2elementStatic or {}
-		local index = pathIndex(data)
 		local vehicles, groups, muNames = cfg.vehicles or {}, cfg.vehicleGroups or {}, cfg.muFileNames or {}
 		local nGroups = #groups
 		if nGroups == 0 then
@@ -789,10 +789,45 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 				if es == nil then return nil, "unknown model " .. tostring(parts[1].part.modelId) end
 				reversed = rev[1]
 			end
-			items[#items + 1] = trainItem(es, reversed, parts[1].part.color, { parts = parts, rev = rev, reversed = reversed, mu = mu })
+			items[#items + 1] = { es = es, color = parts[1].part.color, own = { parts = parts, rev = rev, reversed = reversed, mu = mu } }
 		end
 		if #items == 0 then return nil, "no cars" end
 		return items
+	end
+	-- the train to start Modify with: the cars of the first vehicle as train items, or nil and
+	-- why (then the game's store opens). Several vehicles share the one train, so they must
+	-- have the same cars in the same order; an item's `own` holds that car of every vehicle,
+	-- by the vehicle's place in store.vehicleEntities
+	function rv.modifyPlan(store)
+		local list = store.vehicleEntities
+		if type(list) ~= "table" or #list == 0 then return nil, "no vehicle" end
+		if not vsu.acceptsMultiVehicle(store.carrier) then return nil, "not a train or tram" end
+		local data = store.vehiclesStaticData and store.vehiclesStaticData.repId2elementStatic or {}
+		local index = pathIndex(data)
+		local trains, keys = {}, {}
+		for k, entity in ipairs(list) do
+			local cars, why = rv.carsOf(entity, data, index)
+			if cars == nil then return nil, why end
+			trains[k], keys[k] = cars, {}
+			for i, car in ipairs(cars) do keys[k][i] = kindKey(car.es.multipleUnit, car.es.repId) end
+		end
+		if not core.sameLists(keys) then return nil, "the vehicles have different cars" end
+		local items = {}
+		for i, car in ipairs(trains[1]) do
+			local own = {}
+			for k = 1, #trains do own[k] = trains[k][i].own end
+			items[i] = trainItem(car.es, car.own.reversed, car.color, own)
+		end
+		return items
+	end
+	-- the vehicles a Modify window is for that still exist: { entity, vehicle = its place in
+	-- store.vehicleEntities (the key of its cars in an item's `own`) }
+	function rv.modifyTargets(store)
+		local out = {}
+		for k, e in ipairs((store and store.vehicleEntities) or {}) do
+			if rv.exists(e) then out[#out + 1] = { entity = e, vehicle = k } end
+		end
+		return out
 	end
 	-- the plans of the Modify windows opened (by their params, like `choice` below)
 	rv.plans = {}
@@ -826,8 +861,9 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 	end
 
 	-- the parts to buy, like the store's cart: a multiple unit gives one part per car; turned
-	-- around, its cars come last-first and each one is turned (the cart's own Reverse does that)
-	local function partsOf(entries)
+	-- around, its cars come last-first and each one is turned (the cart's own Reverse does that).
+	-- vehicle: which of the vehicles being modified the parts are for (Modify; see rv.modifyPlan)
+	local function partsOf(entries, vehicle)
 		local parts, groups, muFiles, quantity = {}, {}, {}, {}
 		for _, it in ipairs(entries) do
 			local es = it.es
@@ -835,9 +871,11 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 			if it.own then
 				-- a car the vehicle already has (Modify): its own parts, in the order and the way
 				-- round of the train (turned: last part first, each one turned, like the game's
-				-- cart). The way round is set from the part's own, so doing it again changes nothing
-				local o = it.own
-				local flip = (it.reversed and true or false) ~= (o.reversed and true or false)
+				-- cart). The way round is set from the part's own, so doing it again changes nothing.
+				-- A car is turned when the train's item is the other way round than the first
+				-- vehicle's car was; every vehicle's own car then turns from the way it was
+				local o = it.own[vehicle or 1]
+				local flip = (it.reversed and true or false) ~= (it.own[1].reversed and true or false)
 				local n = #o.parts
 				for k = 1, n do
 					local idx = flip and (n - k + 1) or k
@@ -875,23 +913,40 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 
 	-- buys `entries` as one vehicle (a train for rail and tram, a single vehicle otherwise)
 	local function buy(store, entries, single, onDone)
-		local parts, groups, muFiles, quantity = partsOf(entries)
-		if #parts == 0 then return false, "Nothing to buy" end
-		local config = api.type.TransportVehicleConfig.new()
-		config.vehicles = parts
-		config.vehicleGroups = groups
-		config.muFileNames = single and {} or muFiles
-		-- Buy: one new vehicle; Replace: each old one gets this config; Modify: the vehicle itself
-		local changes = {}
+		-- the train as a config and the new models in it (model id -> how many), nil when empty
+		local function configOf(vehicle)
+			local parts, groups, muFiles, newModels = partsOf(entries, vehicle)
+			if #parts == 0 then return nil end
+			local config = api.type.TransportVehicleConfig.new()
+			config.vehicles = parts
+			config.vehicleGroups = groups
+			config.muFileNames = single and {} or muFiles
+			return config, newModels
+		end
+		-- Buy: one new vehicle; Replace: each old one gets this config; Modify: each vehicle gets
+		-- a config of its own (the cars it keeps are its own parts)
+		local changes, quantity = {}, {}
 		local mode = rv.mode(store)
-		if mode == "Buy" then
-			changes[1] = { vehicleEntity = -1, config = config }
-		else
-			for _, e in ipairs(rv.entities(store)) do
-				changes[#changes + 1] = { vehicleEntity = e, config = config }
-				if mode == "Modify" then break end
+		if mode == "Modify" then
+			for _, t in ipairs(rv.modifyTargets(store)) do
+				local config, newModels = configOf(t.vehicle)
+				if config == nil then return false, "Nothing to buy" end
+				changes[#changes + 1] = { vehicleEntity = t.entity, config = config }
+				for id, n in pairs(newModels) do quantity[id] = (quantity[id] or 0) + n end
 			end
 			if #changes == 0 then return false, "the vehicles are gone" end
+		else
+			local config, newModels = configOf(nil)
+			if config == nil then return false, "Nothing to buy" end
+			quantity = newModels
+			if mode == "Buy" then
+				changes[1] = { vehicleEntity = -1, config = config }
+			else
+				for _, e in ipairs(rv.entities(store)) do
+					changes[#changes + 1] = { vehicleEntity = e, config = config }
+				end
+				if #changes == 0 then return false, "the vehicles are gone" end
+			end
 		end
 		-- (missions count new parts only: kept cars aren't bought again, like the game's cart)
 		local missionError = missionEvent("mission.buyVehicle", { modelId2quantity = quantity, actuallyBuy = false })
@@ -938,21 +993,31 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 			return cost, label, (#list == 1 and "The vehicle becomes this train: " or ("Each of the " .. core.int(#list) .. " vehicles becomes this train: " .. core.int(#list) .. TIMES .. " "))
 				.. money(price) .. ", less " .. money(resale) .. " for " .. (#list == 1 and "the old one" or "the old ones") .. " (what they are worth now)"
 		elseif mode == "Modify" then
+			-- every vehicle gets the new cars and keeps its own
+			local targets = rv.modifyTargets(store)
+			local n = #targets
 			local new, kept = {}, 0
 			for _, it in ipairs(entries) do
 				if it.own then
-					for _, p in ipairs(it.own.parts) do kept = kept + rv.partValue(p) end
+					for _, t in ipairs(targets) do
+						for _, p in ipairs(it.own[t.vehicle].parts) do kept = kept + rv.partValue(p) end
+					end
 				else
 					new[#new + 1] = it
 				end
 			end
 			local okN, dn = pcall(trainData, new)
-			local newPrice = (okN and dn and dn.price) or 0
+			local newPrice = ((okN and dn and dn.price) or 0) * n
 			local resale = rv.resale(rv.entities(store))
 			local cost = newPrice + kept - resale
-			local label = #entries == 0 and "Modify" or (cost >= 0 and ("Modify for " .. money(cost)) or ("Modify (" .. money(-cost) .. " back)"))
-			return cost, label, "New cars " .. money(newPrice) .. " + the cars it keeps " .. money(kept)
-				.. " (what they are worth now), less " .. money(resale) .. " for the train as it is"
+			local what = n == 1 and "Modify" or ("Modify " .. core.int(n))
+			local label = #entries == 0 and "Modify" or (cost >= 0 and (what .. " for " .. money(cost)) or (what .. " (" .. money(-cost) .. " back)"))
+			if n == 1 then
+				return cost, label, "New cars " .. money(newPrice) .. " + the cars it keeps " .. money(kept)
+					.. " (what they are worth now), less " .. money(resale) .. " for the train as it is"
+			end
+			return cost, label, "Each of the " .. core.int(n) .. " trains gets these cars: new cars " .. money(newPrice) .. " + the cars they keep " .. money(kept)
+				.. " (what they are worth now), less " .. money(resale) .. " for the trains as they are"
 		end
 		return price, #entries > 0 and ("Buy for " .. money(price)) or "Buy", "Buy this train; it starts in the depot"
 	end
@@ -2570,7 +2635,7 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 				pcall(function()
 					local m = rv.mode(store)
 					if success and m ~= "Buy" then
-						say(m == "Replace" and "Replaced." or "Modified the train.", "vh-good")
+						say(m == "Replace" and "Replaced." or (#rv.entities(store) > 1 and "Modified the trains." or "Modified the train."), "vh-good")
 					elseif success then
 						say("Bought " .. (isSingle and list[1].es.name or "the train") .. ".", "vh-good")
 					else
@@ -3038,8 +3103,13 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 				emptyText = "Empty. Build the train " .. (n == 1 and "the vehicle becomes" or ("the " .. core.int(n) .. " vehicles become")) .. ": click + Add on a locomotive and some wagons."
 			elseif mode == "Modify" then
 				local list = rv.entities(store)
-				trainName = "Modifying " .. ((list[1] and rv.name(list[1])) or "the train")
-				emptyText = "Empty: every car is off. Click + Add to put some on (closing the window keeps the train as it was)."
+				if #list > 1 then
+					trainName = "Modifying " .. core.int(#list) .. " trains"
+					emptyText = "Empty: every car is off. Click + Add to put some on (closing the window keeps the trains as they were)."
+				else
+					trainName = "Modifying " .. ((list[1] and rv.name(list[1])) or "the train")
+					emptyText = "Empty: every car is off. Click + Add to put some on (closing the window keeps the train as it was)."
+				end
 			end
 			local title = #entries > 0 and (trainName .. DOT .. core.int(#entries) .. (#entries == 1 and " vehicle" or " vehicles")) or trainName
 			local partsNode
@@ -3128,8 +3198,8 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 	local VehicleStoreWindow = vsw.VehicleStoreWindow
 
 	-- buyer or the game's store, chosen once per store window (its params table) on its first draw.
-	-- Buy and Replace open the buyer, and Modify of one train (1.2: the vehicle manager's Replace
-	-- and Modify opened the game's store, Ethan 5 Oct); Modify of several vehicles stays the game's
+	-- Buy and Replace open the buyer, and Modify when the buyer has a plan for it (rv.supported);
+	-- otherwise the window stays the game's
 	local choice, choices = {}, 0
 	local function choiceFor(p)
 		local c = choice[p]

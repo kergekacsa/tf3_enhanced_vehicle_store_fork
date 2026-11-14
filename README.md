@@ -21,6 +21,7 @@ The first commit of this repository is the original, version 1.3 (revision 4, mo
 | Cargo chips for groups | One chip, All cargo: vehicles that carry every cargo type | Two chips. Any cargo: vehicles that carry at least one cargo type. All cargo: vehicles that carry every cargo type |
 | Bars of the computed numbers | From the lowest to the highest value shown | From zero to the highest value shown. Where lower is better, the bar is the lowest value shown as a share of the value |
 | Window height | The game's height for the kind of store | The height of the game's tallest store window (Modify) at every depot |
+| Modify of several trains at once | The game's store | The fork's store, when all the trains have the same cars in the same order. The one train in the train panel stands for each of them, and every train keeps its own cars. Trains with different cars open the game's store |
 | Range filters | None | A Ranges panel with a From and a To slider for every column except the name |
 
 Weight, power and tractive effort stay in the details of a vehicle. The engine filter still shows a vehicle that has any ticked engine type.
@@ -38,6 +39,11 @@ The Filters chip at the right end of the filter row opens the Ranges panel. The 
 
 The fork and the original replace the same store window. Only one of them MUST be active in a game.
 
+## Known limits
+
+- While a store window shows the buyer, the game logs the warning "Preserved props id ... of an instance of VehicleStoreWindowContent - this usually means a recipe was called but not attached to the tree" many times per second. The game builds its own store content for the window, and the buyer takes its place, so that content stays unused. The original has the same warning. With `debugMode = true` in the game's `settings.lua`, the warning also shows on the screen.
+- Modify of several trains with different cars opens the game's store. A different livery of the same model counts as a different car.
+
 ## Tests
 
 Run from this folder:
@@ -46,7 +52,7 @@ Run from this folder:
 lua55 tests/core_test.lua
 ```
 
-The test covers the grade letters, the rule of the cargo filter, and the limits and steps of the range filters in `vh_core.lua`. The listing table itself runs only inside the game.
+The test covers the grade letters, the rule of the cargo filter, the comparison of the cars of several trains, and the limits and steps of the range filters in `vh_core.lua`. The listing table itself runs only inside the game.
 
 ## Updates of the original
 

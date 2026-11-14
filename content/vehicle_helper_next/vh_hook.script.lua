@@ -2,7 +2,7 @@
 --
 -- Runs once when the UI starts (react-replacement-config, see vh_replacements.res.lua) and installs
 -- the buyer (vh_buyer.lua): the store window opened by a depot's Buy button shows the Vehicle
--- Helper buyer instead of the game's content. Replace and Modify keep the game's store.
+-- Helper buyer instead of the game's content. Replace and Modify open it too (see vh_buyer.lua).
 --
 -- The game's own store is left as it is, apart from one button in its top bar ("Enhanced Store")
 -- that switches a Buy store back to the buyer after "Classic store" (see vh_buyer.lua).

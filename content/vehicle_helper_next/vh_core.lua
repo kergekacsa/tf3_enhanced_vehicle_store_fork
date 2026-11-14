@@ -290,6 +290,19 @@ function M.carriesAll(capacities, picked, groups)
 	return true
 end
 
+-- true when every list has the same values in the same order as the first one
+function M.sameLists(lists)
+	local first = lists[1]
+	for k = 2, #lists do
+		local other = lists[k]
+		if #other ~= #first then return false end
+		for i, v in ipairs(first) do
+			if other[i] ~= v then return false end
+		end
+	end
+	return true
+end
+
 ---------------------------------------------------------------------------------------------------
 -- range filters (no game calls)
 ---------------------------------------------------------------------------------------------------

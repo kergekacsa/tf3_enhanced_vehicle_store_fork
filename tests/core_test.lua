@@ -52,6 +52,14 @@ check("All cargo and passengers, universal with passengers",
 check("Any cargo and passengers, freight and passengers",
 	core.carriesAll({ [COAL] = 10, [PASSENGERS] = 20 }, { [ANY] = true, [PASSENGERS] = true }, plain), true)
 
+-- sameLists: every list like the first one, value by value
+check("one list", core.sameLists({ { "a", "b" } }), true)
+check("two equal lists", core.sameLists({ { "a", "b" }, { "a", "b" } }), true)
+check("another order", core.sameLists({ { "a", "b" }, { "b", "a" } }), false)
+check("a longer list", core.sameLists({ { "a", "b" }, { "a", "b", "b" } }), false)
+check("a shorter list", core.sameLists({ { "a", "b" }, { "a" } }), false)
+check("the third list differs", core.sameLists({ { "a" }, { "a" }, { "b" } }), false)
+
 -- gradeIndex: the place of the letter in GRADES, worst first
 check("gradeIndex(0)", core.gradeIndex(0), 1)
 check("gradeIndex(0.6)", core.gradeIndex(0.6), 4)
