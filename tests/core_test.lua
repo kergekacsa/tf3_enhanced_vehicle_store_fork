@@ -52,6 +52,14 @@ check("All cargo and passengers, universal with passengers",
 check("Any cargo and passengers, freight and passengers",
 	core.carriesAll({ [COAL] = 10, [PASSENGERS] = 20 }, { [ANY] = true, [PASSENGERS] = true }, plain), true)
 
+-- specializations: the cargo classes without any-cargo and passengers, each once
+local function joined(list) return table.concat(list, ",") end
+check("no classes", joined(core.specializations(nil)), "")
+check("only plain classes", joined(core.specializations({ "UNIVERSAL", "PASSENGERS" })), "")
+check("one specialization", joined(core.specializations({ "BULK" })), "BULK")
+check("a specialization next to plain classes", joined(core.specializations({ "PASSENGERS", "BULK", "UNIVERSAL" })), "BULK")
+check("the same class twice", joined(core.specializations({ "BULK", "LIQUID", "BULK" })), "BULK,LIQUID")
+
 -- sameLists: every list like the first one, value by value
 check("one list", core.sameLists({ { "a", "b" } }), true)
 check("two equal lists", core.sameLists({ { "a", "b" }, { "a", "b" } }), true)

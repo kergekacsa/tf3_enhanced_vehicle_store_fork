@@ -290,6 +290,22 @@ function M.carriesAll(capacities, picked, groups)
 	return true
 end
 
+-- the cargo classes that are no specialization: a vehicle for any cargo, and passengers
+local PLAIN_CLASSES = { UNIVERSAL = true, PASSENGERS = true }
+
+-- the specializations of a vehicle: its cargo classes (VehicleData.cargoClasses) without the
+-- plain ones, each once, in the order they come
+function M.specializations(cargoClasses)
+	local out, seen = {}, {}
+	for _, cls in ipairs(cargoClasses or {}) do
+		if not PLAIN_CLASSES[cls] and not seen[cls] then
+			seen[cls] = true
+			out[#out + 1] = cls
+		end
+	end
+	return out
+end
+
 -- true when every list has the same values in the same order as the first one
 function M.sameLists(lists)
 	local first = lists[1]

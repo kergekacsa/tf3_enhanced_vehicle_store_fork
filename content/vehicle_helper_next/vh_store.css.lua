@@ -100,15 +100,19 @@ function data()
 	a("R::VhBuyer R::Component!vh-card > BoxLayout!vh-settings-row-box", {
 		innerSpacing = { 8, 0 },
 	})
-	-- a buyer window (class vh-tall) gets the size of the game's tallest store window, the one
-	-- for Modify, at each font size (vehicle_store.css.lua: width 1715, Modify heights). The
-	-- selectors repeat the game's own, with vh-tall added, so they win over them
-	local STORE_WIDTH = 1715
-	local TALL_HEIGHT = { ["font-small"] = 945, ["font-medium"] = 956, ["font-large"] = 960 }
-	for font, height in pairs(TALL_HEIGHT) do
+	-- a buyer window (class vh-buyer-window) gets a share of the screen: "vw" and "vh" are
+	-- hundredths of the screen's width and height. The size counts from the screen's left and
+	-- top edge (the window's margins are part of it). It is never narrower than the game's
+	-- store window (vehicle_store.css.lua: width 1715). The selectors repeat the game's own,
+	-- with vh-buyer-window added, so they win over them
+	local BUYER_WIDTH = "75vw"
+	local BUYER_HEIGHT = "88vh"
+	local GAME_STORE_WIDTH = 1715
+	for _, font in ipairs({ "font-small", "font-medium", "font-large" }) do
 		for _, variant in ipairs({ "", "!without-cart", "!modify" }) do
-			a("!" .. font .. " Window#vehiclestore.window" .. variant .. "!vh-tall", {
-				size = { STORE_WIDTH, height },
+			a("!" .. font .. " Window#vehiclestore.window" .. variant .. "!vh-buyer-window", {
+				size = { BUYER_WIDTH, BUYER_HEIGHT },
+				minSize = { GAME_STORE_WIDTH, -1 },
 			})
 		end
 	end
@@ -371,6 +375,12 @@ function data()
 		color = colors.NeutralLightest,
 		padding = { 1, 5, 1, 5 },
 		gravity = { 0, 0.5 },
+	})
+	-- the game's specialization bubbles (cargo_react_util CargoClassSpecialization) in a row of
+	-- the table and in the details: no margin above, so they sit on the line of the text
+	a("R::VhBuyer R::CargoClassSpecialization R::Component!specialization-component", {
+		margin = { 0, 2, 0, 0 },
+		padding = { 0, 5, 0, 5 },
 	})
 	a("R::VhBuyer BoxLayout!vh-name-line", {
 		innerSpacing = { 6, 0 },

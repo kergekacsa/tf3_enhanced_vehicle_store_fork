@@ -20,8 +20,10 @@ The first commit of this repository is the original, version 1.3 (revision 4, mo
 | Cargo filter | A vehicle shows when it carries any ticked type | A vehicle shows when it carries every ticked type |
 | Cargo chips for groups | One chip, All cargo: vehicles that carry every cargo type | Two chips. Any cargo: vehicles that carry at least one cargo type. All cargo: vehicles that carry every cargo type |
 | Bars of the computed numbers | From the lowest to the highest value shown | From zero to the highest value shown. Where lower is better, the bar is the lowest value shown as a share of the value |
-| Window height | The game's height for the kind of store | The height of the game's tallest store window (Modify) at every depot |
+| Window size | The game's fixed size for the kind of store: 1715 wide, 745 to 960 high | A share of the screen at every depot: 75 % of its width, but never narrower than the game's 1715, and 88 % of its height |
 | Modify of several trains at once | The game's store | The fork's store, when all the trains have the same cars in the same order. The one train in the train panel stands for each of them, and every train keeps its own cars. Trains with different cars open the game's store |
+| Click on a vehicle of the train panel | Nothing | Opens the details of that vehicle. A second click closes them |
+| Specialization of a vehicle | Not shown | The game's coloured bubble before the vehicle name in the listing table, and in the details |
 | Range filters | None | A Ranges panel with a From and a To slider for every column except the name |
 
 Weight, power and tractive effort stay in the details of a vehicle. The engine filter still shows a vehicle that has any ticked engine type.
@@ -52,7 +54,7 @@ Run from this folder:
 lua55 tests/core_test.lua
 ```
 
-The test covers the grade letters, the rule of the cargo filter, the comparison of the cars of several trains, and the limits and steps of the range filters in `vh_core.lua`. The listing table itself runs only inside the game.
+The test covers the grade letters, the rule of the cargo filter, the specializations of a vehicle, the comparison of the cars of several trains, and the limits and steps of the range filters in `vh_core.lua`. The listing table itself runs only inside the game.
 
 ## Updates of the original
 

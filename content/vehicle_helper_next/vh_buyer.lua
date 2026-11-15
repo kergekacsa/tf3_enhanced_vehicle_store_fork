@@ -12,7 +12,7 @@
 --            liveries and versions (the game's variant groups, also multiple-unit versions from
 --            mods). With "Variations: every variation" each has its own row, and no arrow or picker
 --   details: picture, every number in sections, variations picker, color, description
---   train:   the vehicles you added, as tiles like the game's cart (hover: turn around, take off,
+--   train:   the vehicles you added, as tiles like the game's cart (click: its details; hover: turn around, take off,
 --            drag to move; runs of the same wagon stack, with x for the stack and - for one),
 --            a grid of totals, Buy / Fill / Clear
 -- Replace and Modify (the vehicle manager's buttons) open it too (1.2): Replace builds the
@@ -96,8 +96,10 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 	local vru = ug_require "::/gui/line_vehicle_mgmt/vehicle_react_util.tl"
 	local okCargo, cargo_util = pcall(function() return ug_require "::/gui/main/cargo_util.tl" end)
 	local okEru, engine_react_util = pcall(function() return ug_require "::/gui/main/engine_react_util.tl" end)
+	local okCru, cargo_react_util = pcall(function() return ug_require "::/gui/main/cargo_react_util.tl" end)
 	if not okCargo then cargo_util = nil end
 	if not okEru then engine_react_util = nil end
+	if not okCru then cargo_react_util = nil end
 
 	local needed = {
 		{ vsw, "VehicleStoreWindow", "vehicle_store_window" },
@@ -1252,6 +1254,19 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		return short .. unit, str
 	end
 
+	-- the specializations of a vehicle as the game's own bubbles (the name of each cargo class in
+	-- its color), in one row; nil when it has none or the game's recipe is missing
+	local function specializationBubbles(d)
+		local recipe = cargo_react_util and cargo_react_util.CargoClassSpecialization
+		if recipe == nil then return nil end
+		local classes = core.specializations(d.cargoClasses)
+		if #classes == 0 then return nil end
+		local ok, node = pcall(recipe, { cargoClasses = classes, horizontalLayout = true })
+		if ok then return node end
+		fail("the specialization bubble", node)
+		return nil
+	end
+
 	local function cargoSummary(d)
 		if forAnyCargo(d) then
 			return carriesPassengers(d) and "Passengers, all cargo" or "All cargo"
@@ -1300,10 +1315,17 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		local subRow = {}
 		if options > 1 then subRow[#subRow + 1] = image(open and ARROW_UP or ARROW_DOWN, "vh-arrow") end
 		if #sub > 0 then subRow[#subRow + 1] = text(table.concat(sub, DOT), "vh-sub, font-scale-annotation") end
-		-- light rail gets a tag next to the name (like the store's), where it can't be cut off
+		-- light rail gets a tag next to the name (like the store's), where it can't be cut off;
+		-- the specializations come before the name for the same reason
 		local nameLine = text(dyn.model or es.name, "vh-name" .. (open and ", vh-name-open" or ""))
+		local lead = {}
 		if es.vehicleData.isLightrail then
-			nameLine = box(H, { builtin.TextView{ meta = { class = "vh-tag, font-scale-annotation", tooltip = "Light rail: runs on tram and rail tracks" }, text = "Light rail" }, nameLine }, "vh-name-line")
+			lead[#lead + 1] = builtin.TextView{ meta = { class = "vh-tag, font-scale-annotation", tooltip = "Light rail: runs on tram and rail tracks" }, text = "Light rail" }
+		end
+		lead[#lead + 1] = specializationBubbles(es.vehicleData)
+		if #lead > 0 then
+			lead[#lead + 1] = nameLine
+			nameLine = box(H, lead, "vh-name-line")
 		end
 		children[#children + 1] = clip({
 			nameLine,
@@ -1711,13 +1733,16 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 				end,
 			})
 		end
-		-- the half a drop goes to is lit while a tile is dragged over it (with the bar on its edge)
+		-- the half a drop goes to is lit while a tile is dragged over it (with the bar on its edge);
+		-- a click on it is a click on the tile (p.onClick)
 		return builtin.BoxLayout{ meta = { class = "vh-cart-dnd-box" }, children = { builtin.Button{
-			meta = { class = "vh-cart-dnd-button" .. (p.active and ", vh-cart-dnd-on" or "") }, content = builtin.BoxLayout{} } } }
+			meta = { class = "vh-cart-dnd-button" .. (p.active and ", vh-cart-dnd-on" or "") }, content = builtin.BoxLayout{},
+			onClick = p.onClick } } }
 	end)
 
 	-- a tile: p.es, p.reversed, p.color, p.count, p.first, p.last, p.turnable, p.pictures,
-	-- p.onReverse, p.onRemove (the whole tile), p.onRemoveOne (a stack), p.onMove(first, last, before)
+	-- p.onReverse, p.onRemove (the whole tile), p.onRemoveOne (a stack), p.onMove(first, last, before),
+	-- p.onClick (a click on the tile, not on one of its buttons)
 	-- With a controller (p.pad): p.onMoveLeft / p.onMoveRight (nil at the ends), p.focusRef (the
 	-- vehicle number whose tile takes the focus next: after a move the tile is somewhere else) and
 	-- p.carryRef (a move happened while the button was held: the next tile is held too)
@@ -1800,9 +1825,9 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 			float[#float + 1] = builtin.FloatingLayoutChild{ h = -1, v = -1,
 				item = builtin.Component{ meta = { class = "vh-cart-dnd" }, layout = builtin.BoxLayout{ orientation = H, children = {
 					VhCartDnd{ side = "Left", first = p.first, last = p.last, onMove = p.onMove, active = side:old() == "Left",
-						setSide = function(v) side:set(v) end, setGrabbed = function(v) grabbed:set(v) end },
+						setSide = function(v) side:set(v) end, setGrabbed = function(v) grabbed:set(v) end, onClick = p.onClick },
 					VhCartDnd{ side = "Right", first = p.first, last = p.last, onMove = p.onMove, active = side:old() == "Right",
-						setSide = function(v) side:set(v) end, setGrabbed = function(v) grabbed:set(v) end },
+						setSide = function(v) side:set(v) end, setGrabbed = function(v) grabbed:set(v) end, onClick = p.onClick },
 				} } } }
 		end
 		-- where a dragged tile would go: a bar on that side
@@ -1832,7 +1857,7 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 				item = builtin.ImageView{ meta = { class = "vh-cart-grip", mouseTransparent = true }, path = GRIP_ICON } }
 		end
 		local tip = es.name .. (p.count > 1 and (TIMES .. core.int(p.count)) or "") .. (p.reversed and " (turned around)" or "")
-			.. (p.pad and "" or ". Hover for its buttons, drag to move it.")
+			.. (p.pad and "" or ". Click for its details, hover for its buttons, drag to move it.")
 		return builtin.BoxLayout{ meta = { class = "vh-cart-part-box" }, children = { builtin.Component{
 			meta = {
 				class = "vh-cart-part" .. (grabbed:old() and ", vh-cart-grabbed" or "") .. (hover:old() and ", vh-cart-hover" or "")
@@ -2105,6 +2130,7 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		if (d.totalCapacity or 0) > 0 then
 			add(load, "Capacity", core.int(d.totalCapacity), nil, "symbol_cargo.tga")
 			local carries, lines = carriesNode(d)
+			add(load, "Specialization", specializationBubbles(d))
 			add(load, "Carries", carries)
 			if carries and lines > 1 then load[#load].lines = lines end
 			if (d.numCompartments or 0) > 1 then add(load, "Compartments", core.int(d.numCompartments)) end
@@ -3063,6 +3089,20 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 			} }
 		end
 
+		-- opens the details of a vehicle of the train, or closes them when they are open for it
+		-- (the details go by the vehicle's key in the store's data)
+		local function toggleDetailsOf(es)
+			local wanted = kindKey(es.multipleUnit, es.repId)
+			local found = nil
+			for key, other in pairs(allData) do
+				if other == es then found = key; break end
+				if found == nil and not other.variantGroupOnly and kindKey(other.multipleUnit, other.repId) == wanted then found = key end
+			end
+			if found == nil then return end
+			st.variant:set(nil)
+			if shownKey == found then st.selected:set(nil) else st.selected:set(found) end
+		end
+
 		if not single then
 			-- the train: parts, totals, actions
 			local parts = {}
@@ -3073,6 +3113,7 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 				parts[#parts + 1] = VhCartPart{
 					es = g.es, reversed = g.it.reversed, color = g.it.color, count = g.count, first = first, last = last,
 					turnable = canTurn(g.es), pictures = s.pictures,
+					onClick = function() toggleDetailsOf(g.es) end,
 					onReverse = function() reverseRange(first, last) end,
 					onRemove = function()
 						-- with a controller the tile that slides into its place takes the focus
@@ -3283,8 +3324,8 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		local c = choice[store]
 		if c == "buyer" then
 			p.content = VhBuyer{ store = store }
-			-- a buyer window is as tall as the game's tallest store window (see vh_store.css.lua)
-			if type(p.meta) == "table" and type(p.meta.class) == "string" then p.meta.class = p.meta.class .. ", vh-tall" end
+			-- a buyer window gets a size of its own (see vh_store.css.lua)
+			if type(p.meta) == "table" and type(p.meta.class) == "string" then p.meta.class = p.meta.class .. ", vh-buyer-window" end
 		elseif c == "game" and p.content ~= nil and core.settings().buyer and rv.supported(store) then
 			p.content = classicWithButton(store, p.content)
 		end

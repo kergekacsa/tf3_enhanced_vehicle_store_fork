@@ -28,6 +28,10 @@ _Avoid_: Universal, mixed cargo
 The chip of the cargo filter for vehicles that carry at least one freight type.
 _Avoid_: Freight, cargo vehicles
 
+**Specialization**:
+A cargo class of the game that a vehicle is built for, other than any cargo and passengers. The game shows it as a bubble with the name and the colour of the class.
+_Avoid_: Cargo class, wagon type, category
+
 **Range filter**:
 The filter of one column of the listing table that keeps the vehicles whose value lies inside a limit.
 _Avoid_: Column filter, slider filter
