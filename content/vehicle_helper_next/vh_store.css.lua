@@ -108,12 +108,22 @@ function data()
 	local BUYER_WIDTH = "75vw"
 	local BUYER_HEIGHT = "88vh"
 	local GAME_STORE_WIDTH = 1715
+	-- The mod Vehicle Power & Slope Stats (deadeye_vehicle_power_tooltip) gives the content of a
+	-- rail or tram store window a fixed size (window class deadeye-stats-enabled, one rule per
+	-- font, open-eow and variant). In a buyer window the content has no size of its own (-1),
+	-- so it fills the window; these selectors repeat that mod's, with vh-buyer-window added
+	local NO_SIZE = -1
 	for _, font in ipairs({ "font-small", "font-medium", "font-large" }) do
 		for _, variant in ipairs({ "", "!without-cart", "!modify" }) do
 			a("!" .. font .. " Window#vehiclestore.window" .. variant .. "!vh-buyer-window", {
 				size = { BUYER_WIDTH, BUYER_HEIGHT },
 				minSize = { GAME_STORE_WIDTH, -1 },
 			})
+			for _, opened in ipairs({ "", "!open-eow" }) do
+				a("!" .. font .. " Window#vehiclestore.window" .. opened .. variant .. "!deadeye-stats-enabled!vh-buyer-window Window::Content", {
+					size = { NO_SIZE, NO_SIZE },
+				})
+			end
 		end
 	end
 

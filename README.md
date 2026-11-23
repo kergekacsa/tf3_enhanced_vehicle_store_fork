@@ -41,6 +41,8 @@ The Filters chip at the right end of the filter row opens the Ranges panel. The 
 
 The fork and the original replace the same store window. Only one of them MUST be active in a game.
 
+The mod Vehicle Power & Slope Stats (`deadeye_vehicle_power_tooltip`) adds a panel at the right of a rail or tram store window and gives the content of that window a fixed size. The fork removes that fixed size in a buyer window, so the buyer and the panel fill the window.
+
 ## Known limits
 
 - While a store window shows the buyer, the game logs the warning "Preserved props id ... of an instance of VehicleStoreWindowContent - this usually means a recipe was called but not attached to the tree" many times per second. The game builds its own store content for the window, and the buyer takes its place, so that content stays unused. The original has the same warning. With `debugMode = true` in the game's `settings.lua`, the warning also shows on the screen.
