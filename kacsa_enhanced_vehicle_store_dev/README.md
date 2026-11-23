@@ -1,6 +1,19 @@
-# Enhanced Vehicle Store (private fork)
+# Enhanced Vehicle Store Continued
 
-A private fork of the Transport Fever 3 mod [Enhanced Vehicle Store](https://mod.io/g/transportfever3/m/enhanced-vehicle-store). The fork is for personal use and is not published. The terms are in `CONTEXT.md`.
+A fork of the Transport Fever 3 mod [Enhanced Vehicle Store](https://mod.io/g/transportfever3/m/enhanced-vehicle-store) by Smokeystatue, with the mod ID `kacsa_enhanced_vehicle_store`. The terms are in `CONTEXT.md`.
+
+## Layout
+
+| Folder | Content |
+|---|---|
+| `staging_area\kacsa_enhanced_vehicle_store\` | The mod as the game loads and uploads it: `mod.json`, `image_00.jpg`, `content\`, `_metadata\`. It holds no documents and no tests. |
+| `staging_area\kacsa_enhanced_vehicle_store_dev\` | This README, `CONTEXT.md`, `tests\`, and the git data of the repository. |
+
+The repository tracks both folders, and its work tree is `staging_area`. Run every `git` command from `kacsa_enhanced_vehicle_store_dev`. A `git` command from the mod folder reaches the other repository of `staging_area`, which does not track the fork.
+
+## Publishing
+
+The rules and the steps of an upload are in `..\PUBLISHING.md`. The mod page text is `kacsa_enhanced_vehicle_store\_metadata\modinfo.json`, and the cover is `_metadata\0.png`. The cover is the cover of the original with the word "Continued" on it.
 
 ## Start point
 
@@ -20,8 +33,9 @@ The first commit of this repository is the original, version 1.3 (revision 4, mo
 | Cargo filter | A vehicle shows when it carries any ticked type | A vehicle shows when it carries every ticked type |
 | Cargo chips for groups | One chip, All cargo: vehicles that carry every cargo type | Two chips. Any cargo: vehicles that carry at least one cargo type. All cargo: vehicles that carry every cargo type |
 | Bars of the computed numbers | From the lowest to the highest value shown | From zero to the highest value shown. Where lower is better, the bar is the lowest value shown as a share of the value |
-| Window size | The game's fixed size for the kind of store: 1715 wide, 745 to 960 high | A share of the screen at every depot: 75 % of its width, but never narrower than the game's 1715, and 88 % of its height |
+| Window size | The game's fixed size for the kind of store: 1715 wide, 745 to 960 high | A share of the screen at every depot: 88 % of its height. On a wide screen (width at least 2.3 times the height) 75 % of its width. On a narrower screen 95 % of its width. With the side panel of the mod Vehicle Power & Slope Stats in the window, a narrower screen also moves the window 200 to the left next to the line manager, over the right part of the line manager. Next to a vehicle window on a narrower screen it keeps the game's width of 1715 |
 | Modify of several trains at once | The game's store | The fork's store, when all the trains have the same cars in the same order. The one train in the train panel stands for each of them, and every train keeps its own cars. Trains with different cars open the game's store |
+| Train without an engine | The Buy, Replace or Modify button works. The game stops with a fatal error on a train without power | The button is off while the train has no vehicle with an engine, as in the game's store. The button text and a message below it are red |
 | Click on a vehicle of the train panel | Nothing | Opens the details of that vehicle. A second click closes them |
 | Specialization of a vehicle | Not shown | The game's coloured bubble before the vehicle name in the listing table, and in the details |
 | Range filters | None | A Ranges panel with a From and a To slider for every column except the name |
@@ -56,7 +70,7 @@ Run from this folder:
 lua55 tests/core_test.lua
 ```
 
-The test covers the grade letters, the rule of the cargo filter, the specializations of a vehicle, the comparison of the cars of several trains, and the limits and steps of the range filters in `vh_core.lua`. The listing table itself runs only inside the game.
+The test covers the grade letters, the rule of the cargo filter, the specializations of a vehicle, the engine rule of a train, the comparison of the cars of several trains, and the limits and steps of the range filters in `vh_core.lua`. The listing table itself runs only inside the game.
 
 ## Updates of the original
 

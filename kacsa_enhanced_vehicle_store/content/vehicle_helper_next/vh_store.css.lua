@@ -102,12 +102,25 @@ function data()
 	})
 	-- a buyer window (class vh-buyer-window) gets a share of the screen: "vw" and "vh" are
 	-- hundredths of the screen's width and height. The size counts from the screen's left and
-	-- top edge (the window's margins are part of it). It is never narrower than the game's
-	-- store window (vehicle_store.css.lua: width 1715). The selectors repeat the game's own,
-	-- with vh-buyer-window added, so they win over them
+	-- top edge (the window's margins are part of it). The selectors repeat the game's own,
+	-- with vh-buyer-window added, so they win over them.
+	-- On a narrow screen (class vh-narrow-screen, set by vh_buyer.lua) the window is wider; next
+	-- to a vehicle window (open-eow) it keeps the game's width. Next to the line manager
+	-- (open-lvm) it also starts further left, over the right part of the line manager, when it
+	-- holds the side panel of the mod Vehicle Power & Slope Stats (window class
+	-- deadeye-stats-enabled, set by that mod on rail and tram store windows): the shift makes up
+	-- for the width of that panel
 	local BUYER_WIDTH = "75vw"
+	local NARROW_WIDTH = "95vw"
 	local BUYER_HEIGHT = "88vh"
+	-- the game's store window (vehicle_store.css.lua): its width, and its margins next to the
+	-- line manager
 	local GAME_STORE_WIDTH = 1715
+	local GAME_TOP_MARGIN, GAME_LEFT_MARGIN = 75, 595
+	local SIDE_PANEL_LEFT_SHIFT = 200
+	a("Window#vehiclestore.window!open-lvm!deadeye-stats-enabled!vh-buyer-window!vh-narrow-screen", {
+		margin = { GAME_TOP_MARGIN, 0, 0, GAME_LEFT_MARGIN - SIDE_PANEL_LEFT_SHIFT },
+	})
 	-- The mod Vehicle Power & Slope Stats (deadeye_vehicle_power_tooltip) gives the content of a
 	-- rail or tram store window a fixed size (window class deadeye-stats-enabled, one rule per
 	-- font, open-eow and variant). In a buyer window the content has no size of its own (-1),
@@ -117,7 +130,12 @@ function data()
 		for _, variant in ipairs({ "", "!without-cart", "!modify" }) do
 			a("!" .. font .. " Window#vehiclestore.window" .. variant .. "!vh-buyer-window", {
 				size = { BUYER_WIDTH, BUYER_HEIGHT },
-				minSize = { GAME_STORE_WIDTH, -1 },
+			})
+			a("!" .. font .. " Window#vehiclestore.window" .. variant .. "!vh-buyer-window!vh-narrow-screen", {
+				size = { NARROW_WIDTH, BUYER_HEIGHT },
+			})
+			a("!" .. font .. " Window#vehiclestore.window!open-eow" .. variant .. "!vh-buyer-window!vh-narrow-screen", {
+				size = { GAME_STORE_WIDTH, BUYER_HEIGHT },
 			})
 			for _, opened in ipairs({ "", "!open-eow" }) do
 				a("!" .. font .. " Window#vehiclestore.window" .. opened .. variant .. "!deadeye-stats-enabled!vh-buyer-window Window::Content", {
@@ -844,6 +862,13 @@ function data()
 	})
 	a("R::VhBuyer TextView!vh-message", {
 		color = colors.NeutralVeryLight,
+	})
+	a("R::VhBuyer TextView!vh-message!vh-bad", {
+		color = colors.Negative,
+	})
+	-- the Buy button while the train can't be bought (no engine, or not enough money)
+	a("R::VhBuyer Button!vh-buy!vh-buy-blocked:disabled Button::Layout TextView", {
+		color = colors.Negative,
 	})
 
 	return result

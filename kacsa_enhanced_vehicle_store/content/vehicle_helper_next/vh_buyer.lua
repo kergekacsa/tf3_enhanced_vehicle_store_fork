@@ -3184,14 +3184,19 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 			st.priceRef:set(price)
 			local funds = balance()
 			local enough = funds == nil or funds >= price
+			-- a train needs a vehicle with an engine: the game stops with a fatal error on one that
+			-- has no power, so it can't be bought (the game's own store has the same rule)
+			local canBuy = #entries > 0 and enough and core.hasEngine(d)
 			local message = st.message:old()
-			if not enough and #entries > 0 then message = { text = "Not enough money", class = "vh-bad" } end
+			if #entries > 0 and not core.hasEngine(d) then message = { text = "The train has no vehicle with an engine", class = "vh-bad" }
+			elseif not enough and #entries > 0 then message = { text = "Not enough money", class = "vh-bad" } end
 			-- the controller's buy button (IA_OPTION1) buys what the Buy button would
-			st.buyNow:set((#entries > 0 and enough) and function() buyEntries(entries, false) end or nil)
+			st.buyNow:set(canBuy and function() buyEntries(entries, false) end or nil)
 
 			local actions = {
 				button(buyLabel, buyTip,
-					function() buyEntries(entries, false) end, "vh-button, vh-primary, vh-buy", #entries > 0 and enough),
+					function() buyEntries(entries, false) end,
+					"vh-button, vh-primary, vh-buy" .. ((#entries > 0 and not canBuy) and ", vh-buy-blocked" or ""), canBuy),
 				box(H, {
 					button(fill > 0 and ("Fill +" .. core.int(fill)) or "Fill", fill > 0
 						and ("Add " .. core.int(fill) .. TIMES .. " " .. lastWagon.es.name .. ", up to the pull limit (" .. string.lower(core.slopeName(s)) .. " slope)")
@@ -3313,6 +3318,24 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		}, "vh-classic-wrap")
 	end
 
+	-- is the screen narrow (core.narrowScreen)? From the game's viewport size in pixels; each
+	-- new size is logged once
+	local loggedScreen = nil
+	local function narrowScreen()
+		local width, height = nil, nil
+		pcall(function()
+			local size = api.gui.camera.getSize()
+			width, height = size.x, size.y
+		end)
+		local narrow = core.narrowScreen(width, height)
+		local screen = tostring(width) .. " x " .. tostring(height)
+		if screen ~= loggedScreen then
+			loggedScreen = screen
+			core.log("screen " .. screen .. ": " .. (narrow and "narrow" or "wide") .. " window layout")
+		end
+		return narrow
+	end
+
 	local function swapContent(a1, a2, a3)
 		local p = a3
 		if p == nil then p = a2 end
@@ -3324,8 +3347,11 @@ function M.install(core, react, builtin, replacementApi, metricsFor)
 		local c = choice[store]
 		if c == "buyer" then
 			p.content = VhBuyer{ store = store }
-			-- a buyer window gets a size of its own (see vh_store.css.lua)
-			if type(p.meta) == "table" and type(p.meta.class) == "string" then p.meta.class = p.meta.class .. ", vh-buyer-window" end
+			-- a buyer window gets a size of its own, and on a narrow screen a place of its own
+			-- (see vh_store.css.lua)
+			if type(p.meta) == "table" and type(p.meta.class) == "string" then
+				p.meta.class = p.meta.class .. ", vh-buyer-window" .. (narrowScreen() and ", vh-narrow-screen" or "")
+			end
 		elseif c == "game" and p.content ~= nil and core.settings().buyer and rv.supported(store) then
 			p.content = classicWithButton(store, p.content)
 		end

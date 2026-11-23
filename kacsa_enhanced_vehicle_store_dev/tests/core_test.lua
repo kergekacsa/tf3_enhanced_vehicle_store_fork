@@ -1,7 +1,7 @@
 -- Tests of the rules in vh_core.lua that need no game: the grade letters and the cargo filter.
--- Run from the mod folder: lua55 tests/core_test.lua
+-- Run from the folder kacsa_enhanced_vehicle_store_dev: lua55 tests/core_test.lua
 
-local core = dofile("content/vehicle_helper_next/vh_core.lua")
+local core = dofile("../kacsa_enhanced_vehicle_store/content/vehicle_helper_next/vh_core.lua")
 
 local failures = 0
 local function check(name, got, want)
@@ -59,6 +59,24 @@ check("only plain classes", joined(core.specializations({ "UNIVERSAL", "PASSENGE
 check("one specialization", joined(core.specializations({ "BULK" })), "BULK")
 check("a specialization next to plain classes", joined(core.specializations({ "PASSENGERS", "BULK", "UNIVERSAL" })), "BULK")
 check("the same class twice", joined(core.specializations({ "BULK", "LIQUID", "BULK" })), "BULK,LIQUID")
+
+-- narrowScreen: by the ratio of width to height, unknown counts as narrow
+check("1920 x 1080", core.narrowScreen(1920, 1080), true)
+check("2560 x 1440", core.narrowScreen(2560, 1440), true)
+check("3840 x 2160", core.narrowScreen(3840, 2160), true)
+check("1920 x 1200", core.narrowScreen(1920, 1200), true)
+check("2560 x 1080", core.narrowScreen(2560, 1080), false)
+check("3440 x 1440", core.narrowScreen(3440, 1440), false)
+check("5120 x 1440", core.narrowScreen(5120, 1440), false)
+check("unknown size", core.narrowScreen(nil, nil), true)
+check("height of zero", core.narrowScreen(1920, 0), true)
+
+-- hasEngine: a train needs power or thrust
+check("an empty train", core.hasEngine(nil), false)
+check("only wagons", core.hasEngine({ power = 0, thrust = 0 }), false)
+check("no values at all", core.hasEngine({}), false)
+check("a locomotive", core.hasEngine({ power = 3000, thrust = 0 }), true)
+check("thrust only", core.hasEngine({ thrust = 50 }), true)
 
 -- sameLists: every list like the first one, value by value
 check("one list", core.sameLists({ { "a", "b" } }), true)

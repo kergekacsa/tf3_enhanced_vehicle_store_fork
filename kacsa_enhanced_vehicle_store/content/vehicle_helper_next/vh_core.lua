@@ -306,6 +306,22 @@ function M.specializations(cargoClasses)
 	return out
 end
 
+-- a screen below this width-to-height ratio is narrow (16:9 is 1.78, 21:9 is 2.33 or more)
+local NARROW_SCREEN_ASPECT = 2.3
+
+-- true when the screen is narrow, so the buyer window needs the room over the line manager.
+-- width, height: the screen in pixels; an unknown size counts as narrow
+function M.narrowScreen(width, height)
+	if type(width) ~= "number" or type(height) ~= "number" or height <= 0 then return true end
+	return width / height < NARROW_SCREEN_ASPECT
+end
+
+-- true when a train has a vehicle with an engine. d: the train's summed VehicleData (power in
+-- kW, thrust in kN), nil for an empty train
+function M.hasEngine(d)
+	return d ~= nil and ((d.power or 0) > 0 or (d.thrust or 0) > 0)
+end
+
 -- true when every list has the same values in the same order as the first one
 function M.sameLists(lists)
 	local first = lists[1]

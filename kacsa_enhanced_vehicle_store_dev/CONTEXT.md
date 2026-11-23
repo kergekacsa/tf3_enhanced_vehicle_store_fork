@@ -1,6 +1,6 @@
-# Enhanced Vehicle Store (private fork)
+# Enhanced Vehicle Store Continued
 
-A private fork of the Transport Fever 3 mod Enhanced Vehicle Store. The mod replaces the content of the store window that a depot opens for buying vehicles.
+A fork of the Transport Fever 3 mod Enhanced Vehicle Store. The mod replaces the content of the store window that a depot opens for buying vehicles.
 
 ## Language
 
